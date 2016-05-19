@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script>
+  var host = "ws://localhost:7000/";
+  s = new WebSocket(host);
+
+  s.onopen = function (e) { alert("Connected"); };
+  s.onclose = function (e) { alert("Closed."); };
+  s.onerror = function (e) { alert("Error."); };
+  s.onmessage = function (e) { alert("message: " + e.data); };
+  </script>
+</head>
+<body>
+</body>
+</html>
