@@ -61,7 +61,17 @@ Sec-WebSocket-Accept: '''
         payload.extend(data)
         # print(payload)
         sock.send(payload)
-
+        d = sock.recv(1024)
+        secondByte = d[1]
+        lg = secondByte & 127
+        indexFirstMask = 2
+        masks = d[2:6]
+        indexFirstDataByte = indexFirstMask + 4
+        decoded = bytearray()
+        # decoded.length = bytes.length - indexFirstDataByte
+        for i in range(indexFirstMask,len(d)):
+            decoded.append(d[i] ^ masks[(i-indexFirstMask) % 4])
+        print(decoded)
 
     def parse_headers(self,headers):
         '''
