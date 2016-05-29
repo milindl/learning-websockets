@@ -1,5 +1,6 @@
 #Learning Websockets
 This repository was originally made to learn about websockets. There was no better way than *implementing a websocket server* from scratch(since the client sided part is almost trivial). So I've implemented a chat server.
+Apologies for grammatical errors and spelling errors, but I do not care.
 
 ### Requirements
 * python3
@@ -21,7 +22,7 @@ $ python3 server.py
 3. Point as many web-browsers as you want towards the location of your server (the IP address IP "B")
 
 Note: The IP/location of the WebSocket server and the WebHosting server are unrelated. However, in my testing process, I ran them both off the same machine, so both were localhost for me, with different port numbers.
-So to re-iterate, the **host** in your index.html file point to the _IP address of the computer where server.py is running_ and your **browser address bar** points to the _IP address where your web-hosting server is running_.
+So to re-iterate, the **host** in your index.html file points to the _IP address of the computer where server.py is running_ and your **browser address bar** points to the _IP address where your web-hosting server is running_.
 To keep it simple, keep both on your own machine and replace both with localhost.
 
 
