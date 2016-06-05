@@ -8,7 +8,7 @@ class WebServerSocket:
         self.host = host
         self.port= port
         self.ssock = None
-        self.client_list = []
+        self.client_list = []                                   # A better name may be handshaken list
         self.client_list_lock = threading.Lock()
         self.forward_q = []
         self.forward_q_lock = threading.Lock()
@@ -67,6 +67,14 @@ class WebServerSocket:
         payload.extend(data)
         # print(payload)
         return payload
+
+    def send(self, client_list, mes):
+        '''
+        Sends a utf 8 mes to all clients in the client list provided that they are a sublist of the main client list
+        '''
+        client_list = [cl for cl in client_list if cl in self.client_list]
+        for cl in client_list:
+            cl.sock.sendall(self.__prepare_message(mes))
 
 
     def __parse_headers(self,headers):
@@ -139,7 +147,7 @@ def actual_server_application():
         for msg in wssock.forward_q:
             with wssock.forward_q_lock:
                 wssock.forward_q.remove(msg)
-            print(str(msg[0])+ ":" + msg[1])
+            wssock.send(wssock.client_list,str(msg[0])+ ":" + msg[1])
 
 
 actual_server_application()
