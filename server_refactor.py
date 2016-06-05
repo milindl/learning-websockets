@@ -19,6 +19,9 @@ class WebServerSocket:
         '''
         while True:
             data = cl.sock.recv(1024)
+            if data[0]==0x88:
+                self.close(cl)
+                continue
             secondByte = data[1]
             lg_byte = secondByte & 127
             #Adjust for the location of the first byte of mask depending on whether extended payload length is used or not
@@ -76,7 +79,6 @@ class WebServerSocket:
         for cl in client_list:
             cl.sock.sendall(self.__prepare_message(mes))
 
-
     def __parse_headers(self,headers):
         '''
             Usage:
@@ -115,6 +117,23 @@ class WebServerSocket:
         #Now to get the username
         return username
 
+    def close(self, cl, status_code = 1000):
+        '''
+        This responds to a closing handshake from a client socket, and also causes a close.
+        '''
+        s1 = 0b10001000
+        s2 = 0b00000010
+        payload = bytearray()
+        payload.append(s1)
+        payload.append(s2)
+        import struct
+        payload.extend(struct.pack("!H", status_code))
+        try:
+            cl.sock.sendall(payload)
+            cl.sock.close()
+        finally:
+            with self.client_list_lock:
+                self.client_list.remove(cl)
 
     def start(self):
         '''
@@ -143,6 +162,12 @@ def actual_server_application():
     wssock = WebServerSocket()
     wssock_t = threading.Thread(target = wssock.start)
     wssock_t.start()
+    while True:
+        if len(wssock.client_list)>=3:
+            wssock.send(wssock.client_list, "WHOABRO")
+            wssock.send(wssock.client_list, "Chat can start now. List of all users is:" + str(" ".join([cl.name for cl in wssock.client_list])))
+            break
+
     while True:
         for msg in wssock.forward_q:
             with wssock.forward_q_lock:
