@@ -1,3 +1,4 @@
+_NB: There have been certain changes after I refactored my code. Go to the old master branch around 6 commits before this to view the old code. The instructions about the actual protocol still holds though._
 #Learning Websockets
 This repository was originally made to learn about websockets. There was no better way than *implementing a websocket server* from scratch(since the client sided part is almost trivial). So I've implemented a chat server.
 Apologies for grammatical errors and spelling errors, but I do not care.
