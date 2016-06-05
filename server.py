@@ -163,7 +163,7 @@ def actual_server_application():
     wssock_t = threading.Thread(target = wssock.start)
     wssock_t.start()
     while True:
-        if len(wssock.client_list)>=3:
+        if len(wssock.client_list)==3:
             wssock.send(wssock.client_list, "WHOABRO")
             wssock.send(wssock.client_list, "Chat can start now. List of all users is:" + str(" ".join([cl.name for cl in wssock.client_list])))
             break
