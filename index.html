@@ -6,8 +6,8 @@
   <input type="text" id="message">
   <div id="scroller" style="width:100%; height: 90%; overflow:auto; position:absolute; top: 10%; left:0px"></div>
   <script>
-  #Host can and should be changed
-  var host = "ws://192.168.0.39:7000/";
+  //Host can and should be changed
+  var host = "ws://localhost:7000/?params=nowat";
   s = new WebSocket(host, "chat");
   function print(thing) {
     document.getElementById('scroller').innerHTML=thing+"<br>"
