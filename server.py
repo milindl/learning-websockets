@@ -1,34 +1,48 @@
-import socket, hashlib, base64, threading
-
-class Serv:
-    def __init__(self, host='0.0.0.0', port = 7000):
-        self.ssock = None
+import socket,hashlib,base64,threading
+from client import Client
+class WebServerSocket:
+    def __init__(self, host = "0.0.0.0", port = 7000):
+        '''
+            Initialization things
+        '''
         self.host = host
-        self.port = port
-        self.sent_q = []
-        self.sock_list={}
-        self.sock_list_lock = threading.Lock()
-        self.sent_q_lock = threading.Lock()
+        self.port= port
+        self.ssock = None
+        self.client_list = []                                   # A better name may be handshaken list
+        self.client_list_lock = threading.Lock()
+        self.forward_q = []
+        self.forward_q_lock = threading.Lock()
 
-    def handshake(self,sock):
+    def log(self, cl):
         '''
-        Recieves headers, parses headers and sends a response appropriate.
+        Listens to whatever socket we have assigned to it and messages go to the forward_q
         '''
-        req = sock.recv(4096).decode("utf-8")
-        h = self.parse_headers(req)
-        websocket_accepted_key= self.hashin_shit(h["Sec-WebSocket-Key"])
-        reply = '''
-HTTP/1.1 101 Switching Protocols\r
-Upgrade: websocket\r
-Connection: Upgrade\r
-Sec-WebSocket-Protocol: chat\r
-Sec-WebSocket-Accept: '''
-        reply=reply+websocket_accepted_key+"\r\n\r\n"
-        sock.send(reply.encode())
+        while True:
+            data = cl.sock.recv(1024)
+            if data[0]==0x88:
+                self.close(cl)
+                continue
+            secondByte = data[1]
+            lg_byte = secondByte & 127
+            #Adjust for the location of the first byte of mask depending on whether extended payload length is used or not
+            indexFirstMask = 2
+            if lg_byte == 126:
+                indexFirstMask = 4
+            if lg_byte == 127:
+                indexFirstMask = 10
+            masks = data[indexFirstMask:indexFirstMask+4]
+            indexFirstDataByte = indexFirstMask + 4
+            decoded = bytearray()
+            #decoded length = bytes.length - indexFirstDataByte
+            for i in range(indexFirstDataByte, len(data)):          # Iterate from the first byte of data till the end of it
+                decoded.append(data[i]^masks[(i-indexFirstMask)%4])
+            with self.forward_q_lock:
+                self.forward_q.append((cl, decoded.decode()))
 
-    def send_data(self, data, sock):                   # Actual low level sender function (topmost stack)
+    def __prepare_message(self, data):
         '''
-        Prepare the headers and send the message. The sock in the params in temporary. Final solution is to use send queue
+        Prepare utf-8 text to be sent as per protocol
+        Returns a bytearray
         '''
         data = data.encode('utf-8')
         payload=bytearray()
@@ -55,77 +69,17 @@ Sec-WebSocket-Accept: '''
         # print(payload)
         payload.extend(data)
         # print(payload)
-        sock.send(payload)
+        return payload
 
-    def sent_q_clearer(self):                          # This method is a testing only method.
+    def send(self, client_list, mes):
         '''
-        Thread to monitor send q and send the requisite messages
+        Sends a utf 8 mes to all clients in the client list provided that they are a sublist of the main client list
         '''
-        while True:
-            if len(self.sent_q) == 0:
-                continue
-            with self.sent_q_lock:
-                for message in self.sent_q:
-                    for socket in self.sock_list:
-                        self.send_data(message, socket)
-                        print("Sending to all")
-                    self.sent_q.remove(message)
+        client_list = [cl for cl in client_list if cl in self.client_list]
+        for cl in client_list:
+            cl.sock.sendall(self.__prepare_message(mes))
 
-    def listen(self, sock):
-        #This is a standard listener thread
-        while True:
-            d = sock.recv(1024)
-            secondByte = d[1]
-            lg = secondByte & 127
-            indexFirstMask = 2
-            if lg == 126:
-                indexFirstMask=4
-            if lg == 127:
-                indexFirstMask=10
-            masks = d[indexFirstMask:indexFirstMask+4]
-            indexFirstDataByte = indexFirstMask + 4
-            decoded = bytearray()
-            # decoded.length = bytes.length - indexFirstDataByte
-            for i in range(indexFirstMask,len(d)):
-                decoded.append(d[i] ^ masks[(i-indexFirstMask) % 4])
-            # To handle socket specific cases, I need to deal with it here and now.
-            # Case: first message
-            if decoded.decode()[4:10]=="/NAME ":
-                value = decoded.decode()[10:]
-                if value in self.sock_list.values():
-                    self.send_data("Please do NOT repeat usernames. Choose another one.")
-                    continue
-                with self.sent_q_lock:
-                    self.sent_q.append("Name change: "+self.sock_list[sock]+" -> "+value)
-                self.sock_list[sock] = value
-                continue
-            #Case: closing frame sent
-            if d[0]==0x88:
-                self.close_socket(sock)
-                return
-            with self.sent_q_lock:
-                self.sent_q.append(self.sock_list[sock] + ":" + decoded.decode())
-
-    def close_socket(self, sock, code=1000):
-        '''
-        Actually closes that socket with that status code
-        Usage: self.close(sock, code=1000)
-        '''
-        s1 = 0b10001000
-        s2 = 0b00000010
-        payload = bytearray()
-        payload.append(s1)
-        payload.append(s2)
-        import struct
-        payload.extend(struct.pack("!H", code))
-        try:
-            sock.send(payload)
-            sock.close()
-        finally:
-            with self.sock_list_lock:
-                self.sock_list.pop(sock)
-
-    def parse_headers(self,headers):
+    def __parse_headers(self,headers):
         '''
             Usage:
             parse_headers(headers)
@@ -139,10 +93,9 @@ Sec-WebSocket-Accept: '''
             parsed_headers[k[0].strip()] = "".join([str(k[i]).strip() for i in range(1,len(k))])
         return parsed_headers
 
-
-    def hashin_shit(self, key):
+    def __sec_key_hash(self, key):
         '''
-        Makes the requisite hash from given key as specced in the protocol
+        Complies with the weird websocket protocol
         '''
         GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
         key = key.strip()+GUID.strip()
@@ -151,23 +104,75 @@ Sec-WebSocket-Accept: '''
         to_return = base64.b64encode(hasher.digest())
         return (to_return.decode('utf-8'))
 
+    def _handshake(self, sock):
+        '''
+        Shakes hand with the given socket and returns the username by looking at the GET headers.
+        '''
+        req = sock.recv(4096).decode("utf-8")
+        headers = self.__parse_headers(req)
+        sec_ws_accept = self.__sec_key_hash(headers["Sec-WebSocket-Key"])
+        username = headers["Sec-WebSocket-Protocol"]
+        reply = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Protocol:"+username+" \r\nSec-WebSocket-Accept:" + sec_ws_accept + "\r\n\r\n"
+        sock.send(reply.encode())
+        #Now to get the username
+        return username
+
+    def close(self, cl, status_code = 1000):
+        '''
+        This responds to a closing handshake from a client socket, and also causes a close.
+        '''
+        s1 = 0b10001000
+        s2 = 0b00000010
+        payload = bytearray()
+        payload.append(s1)
+        payload.append(s2)
+        import struct
+        payload.extend(struct.pack("!H", status_code))
+        try:
+            cl.sock.sendall(payload)
+            cl.sock.close()
+        finally:
+            with self.client_list_lock:
+                self.client_list.remove(cl)
+
     def start(self):
-        user_counter = 0
+        '''
+        Starts the server --
+        1. Bind to port and host as given in the constuctor
+        2. Start a lot of listener threads
+        '''
+        #Bind
         self.ssock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.ssock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.ssock.bind((self.host,self.port))
+        self.ssock.bind((self.host, self.port))
         self.ssock.listen(1)
-        threading.Thread(target=self.sent_q_clearer).start()
+
+        #Accept and listen
         while True:
-            conn, add = self.ssock.accept()
-            self.handshake(conn)
-            with self.sock_list_lock:
-                self.sock_list[conn] = "user" + str(user_counter)
-            with self.sent_q_lock:
-                self.sent_q.append('New user ' + self.sock_list[conn] +" has joined.")
-            user_counter+=1
-            threading.Thread(target=self.listen, args=(conn,)).start()
+            csock, add = self.ssock.accept()
+            name = self._handshake(csock)
+            cl = Client(csock, name)
+            with self.client_list_lock:
+                self.client_list.append(cl)
+            threading.Thread(target = self.log, args = (cl,)).start()
         self.ssock.close()
 
 
-Serv().start()
+def actual_server_application():
+    wssock = WebServerSocket()
+    wssock_t = threading.Thread(target = wssock.start)
+    wssock_t.start()
+    while True:
+        if len(wssock.client_list)>=3:
+            wssock.send(wssock.client_list, "WHOABRO")
+            wssock.send(wssock.client_list, "Chat can start now. List of all users is:" + str(" ".join([cl.name for cl in wssock.client_list])))
+            break
+
+    while True:
+        for msg in wssock.forward_q:
+            with wssock.forward_q_lock:
+                wssock.forward_q.remove(msg)
+            wssock.send(wssock.client_list,str(msg[0])+ ":" + msg[1])
+
+
+actual_server_application()
