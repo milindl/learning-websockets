@@ -21,7 +21,7 @@ class WebServerSocket:
             data = cl.sock.recv(1024)
             if data[0]==0x88:
                 self.close(cl)
-                continue
+                break
             secondByte = data[1]
             lg_byte = secondByte & 127
             #Adjust for the location of the first byte of mask depending on whether extended payload length is used or not
