@@ -3,7 +3,7 @@ _NB: There have been certain changes after I refactored my code. Go to the old m
 # Learning Websockets
 This repository was originally made to learn about websockets. There was no better way than *implementing a websocket server* from scratch(since the client sided part is almost trivial). So I've implemented a chat server.
 
-Apologies for grammatical errors and spelling errors, but I do not care.
+Apologies for grammatical and spelling errors.
 
 ### Requirements
 * python3
